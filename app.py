@@ -26,7 +26,7 @@ print("=" * 60)
 # ✅ Try every possible variable Railway might provide for MySQL
 def get_database_url():
     # Option 1: Direct DATABASE_URL
-    url = os.environ.get("DATABASE_URL", "")
+   url = os.environ.get("MYSQL_URL", "")
     if url:
         print(f"✅ Using DATABASE_URL: {url[:40]}...")
         if url.startswith("mysql://"):
