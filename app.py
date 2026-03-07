@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 import uuid
@@ -11,7 +11,6 @@ app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 # ---- Database Config ----
-# Railway provides MYSQL_URL — we just need to swap the driver prefix
 RAW_URL = (
     os.environ.get("MYSQL_URL") or
     os.environ.get("DATABASE_URL") or
@@ -19,15 +18,12 @@ RAW_URL = (
 )
 
 if RAW_URL:
-    # Replace any mysql:// or mysql+mysqlconnector:// with mysql+pymysql://
     DB_URI = RAW_URL
     DB_URI = DB_URI.replace("mysql+mysqlconnector://", "mysql+pymysql://")
     if DB_URI.startswith("mysql://"):
         DB_URI = "mysql+pymysql://" + DB_URI[len("mysql://"):]
     print("DEBUG using URL-based connection")
-    print("DEBUG DB_URI prefix=" + DB_URI[:30])
 else:
-    # Fallback: build from individual vars
     H = os.environ.get("MYSQLHOST", "localhost")
     P = os.environ.get("MYSQLPORT", "3306")
     U = os.environ.get("MYSQLUSER", "vocuser")
@@ -35,8 +31,6 @@ else:
     D = os.environ.get("MYSQL_DATABASE", "railway")
     DB_URI = "mysql+pymysql://" + U + ":" + W + "@" + H + ":" + P + "/" + D
     print("DEBUG using individual vars H=" + H + " D=" + D)
-
-print("DEBUG final DB_URI start=" + DB_URI[:40])
 
 app.config["SQLALCHEMY_DATABASE_URI"] = DB_URI
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
@@ -48,7 +42,6 @@ app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
 db = SQLAlchemy(app)
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-print("DEBUG ANTHROPIC_KEY set=" + str(bool(ANTHROPIC_API_KEY)))
 
 # ---- Models ----
 class Device(db.Model):
@@ -124,8 +117,14 @@ def predict_with_claude(mq7, mq3, mq4, mq135, voc):
         return fallback_prediction(mq7, mq3, mq4, mq135)
 
 # ---- Routes ----
+
+# ✅ Serve dashboard at root URL
 @app.route("/")
-def home():
+def dashboard():
+    return render_template("index.html")
+
+@app.route("/api")
+def api_info():
     return jsonify({"status": "running", "message": "VOC Backend with Claude AI"})
 
 @app.route("/register", methods=["POST"])
