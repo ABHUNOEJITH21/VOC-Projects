@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VOC Disease Detection — AI Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: radial-gradient(circle at top, #0d1117, #060810);
+    color: #e0e0e0; min-height:100vh; padding:24px;
+}
+.container { max-width:1500px; margin:auto; }
+h1 {
+    text-align:center; font-size:2.4rem; margin-bottom:6px;
+    background:linear-gradient(45deg,#00d4ff,#00ffaa);
+    -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+}
+.subtitle { text-align:center; color:#555; font-size:0.9rem; margin-bottom:22px; letter-spacing:2px; text-transform:uppercase; }
+.status-bar { text-align:center; margin-bottom:28px; font-size:1rem; color:#00ff88; }
+.status-bar.error   { color:#ff4444; }
+.status-bar.warning { color:#ffaa00; }
+
+.sensor-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:18px; margin-bottom:28px; }
+.sensor-card {
+    background:linear-gradient(145deg,rgba(30,30,55,0.9),rgba(15,15,35,0.95));
+    border-radius:16px; padding:22px; text-align:center;
+    border:1px solid rgba(0,212,255,0.2); box-shadow:0 10px 28px rgba(0,0,0,0.5); transition:border-color 0.3s;
+}
+.sensor-card:hover { border-color:rgba(0,212,255,0.5); }
+.sensor-label { font-size:0.9rem; color:#888; text-transform:uppercase; letter-spacing:1px; }
+.sensor-value { margin-top:10px; font-size:2.4rem; font-weight:bold; background:linear-gradient(45deg,#00d4ff,#00ffaa); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+
+.ai-panel {
+    background:linear-gradient(145deg,rgba(20,20,45,0.97),rgba(10,10,30,0.99));
+    border-radius:20px; padding:28px 32px; margin-bottom:28px;
+    border:1px solid rgba(0,212,255,0.25); box-shadow:0 0 40px rgba(0,100,255,0.08);
+}
+.ai-panel-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:22px; flex-wrap:wrap; gap:12px; }
+.ai-panel-title { font-size:1.3rem; color:#00d4ff; display:flex; align-items:center; gap:10px; }
+.ai-panel-title .dot { width:10px; height:10px; border-radius:50%; background:#00ff88; animation:pulse 1.5s infinite; }
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(1.4)} }
+
+#predictBtn {
+    background:linear-gradient(135deg,#0066ff,#00d4ff); color:#fff; border:none;
+    padding:10px 24px; border-radius:50px; font-size:0.95rem; cursor:pointer;
+    font-weight:600; transition:opacity 0.2s,transform 0.1s; letter-spacing:0.5px;
+}
+#predictBtn:hover  { opacity:0.85; }
+#predictBtn:active { transform:scale(0.97); }
+#predictBtn:disabled { opacity:0.4; cursor:not-allowed; }
+
+.prediction-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:16px; margin-bottom:18px; }
+.pred-card { background:rgba(255,255,255,0.03); border-radius:14px; padding:18px; border:1px solid rgba(255,255,255,0.07); text-align:center; }
+.pred-card .label { font-size:0.8rem; color:#666; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px; }
+.pred-card .value { font-size:1.5rem; font-weight:bold; color:#fff; }
+
+.status-NORMAL   { color:#00ff88 !important; }
+.status-ABNORMAL { color:#ff4444 !important; }
+.risk-Low    { color:#00ff88 !important; }
+.risk-Medium { color:#ffaa00 !important; }
+.risk-High   { color:#ff4444 !important; }
+
+.advice-box { background:rgba(0,212,255,0.06); border-left:3px solid #00d4ff; border-radius:8px; padding:14px 18px; font-size:0.95rem; color:#ccc; line-height:1.6; }
+.advice-box strong { color:#00d4ff; }
+
+.spinner { display:inline-block; width:16px; height:16px; border:2px solid rgba(255,255,255,0.2); border-top-color:#fff; border-radius:50%; animation:spin 0.7s linear infinite; margin-right:8px; vertical-align:middle; }
+@keyframes spin { to{transform:rotate(360deg)} }
+
+.history-section { margin-bottom:28px; }
+.section-title { font-size:1.1rem; color:#00d4ff; margin-bottom:14px; padding-bottom:8px; border-bottom:1px solid rgba(0,212,255,0.15); }
+.history-table { width:100%; border-collapse:collapse; font-size:0.88rem; }
+.history-table th { background:rgba(0,212,255,0.08); color:#00d4ff; padding:10px 14px; text-align:left; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; }
+.history-table td { padding:10px 14px; border-bottom:1px solid rgba(255,255,255,0.04); color:#bbb; }
+.history-table tr:hover td { background:rgba(255,255,255,0.02); }
+
+.charts-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:22px; }
+.chart-container { aspect-ratio:4/3; background:linear-gradient(145deg,rgba(22,22,42,0.97),rgba(10,10,28,0.99)); border-radius:18px; padding:16px; border:1px solid rgba(0,212,255,0.15); }
+.chart-title { text-align:center; margin-bottom:8px; color:#00d4ff; font-size:1rem; }
+canvas { width:100%!important; height:100%!important; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <h1>🫁 VOC Disease Detection</h1>
+  <p class="subtitle">ESP32 · Real-Time Breath Analysis · Claude AI</p>
+  <div class="status-bar" id="status">🔄 Connecting...</div>
+
+  <div class="sensor-grid">
+    <div class="sensor-card"><div class="sensor-label">MQ7 — CO</div><div class="sensor-value" id="mq7">—</div></div>
+    <div class="sensor-card"><div class="sensor-label">MQ3 — Alcohol</div><div class="sensor-value" id="mq3">—</div></div>
+    <div class="sensor-card"><div class="sensor-label">MQ4 — Methane</div><div class="sensor-value" id="mq4">—</div></div>
+    <div class="sensor-card"><div class="sensor-label">MQ135 — VOC</div><div class="sensor-value" id="mq135">—</div></div>
+    <div class="sensor-card"><div class="sensor-label">VOC Score</div><div class="sensor-value" id="voc">—</div></div>
+  </div>
+
+  <div class="ai-panel">
+    <div class="ai-panel-header">
