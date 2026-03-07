@@ -11,27 +11,62 @@ import os
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=False)
 
-# ✅ Railway provides DATABASE_URL automatically
-DATABASE_URL = os.environ.get("DATABASE_URL")
+# ✅ DEBUG — print all env vars at startup so we can see what Railway provides
+print("=" * 60)
+print("🔍 ENVIRONMENT VARIABLES DEBUG:")
+print(f"   DATABASE_URL      = {os.environ.get('DATABASE_URL', 'NOT SET')}")
+print(f"   MYSQL_URL         = {os.environ.get('MYSQL_URL', 'NOT SET')}")
+print(f"   MYSQL_HOST        = {os.environ.get('MYSQL_HOST', 'NOT SET')}")
+print(f"   MYSQL_PORT        = {os.environ.get('MYSQL_PORT', 'NOT SET')}")
+print(f"   MYSQL_DATABASE    = {os.environ.get('MYSQL_DATABASE', 'NOT SET')}")
+print(f"   MYSQL_USER        = {os.environ.get('MYSQL_USER', 'NOT SET')}")
+print(f"   ANTHROPIC_API_KEY = {'SET' if os.environ.get('ANTHROPIC_API_KEY') else 'NOT SET'}")
+print("=" * 60)
 
-if DATABASE_URL:
-    if DATABASE_URL.startswith("mysql://"):
-        DATABASE_URL = DATABASE_URL.replace("mysql://", "mysql+pymysql://", 1)
-    app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
-else:
-    # Local fallback
-    DB_USER     = os.environ.get("DB_USER",     "vocuser")
-    DB_PASSWORD = os.environ.get("DB_PASSWORD", "1234")
-    DB_HOST     = os.environ.get("DB_HOST",     "localhost")
-    DB_NAME     = os.environ.get("DB_NAME",     "iot_voc")
-    app.config['SQLALCHEMY_DATABASE_URI'] = \
-        f"mysql+mysqlconnector://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/{DB_NAME}"
+# ✅ Try every possible variable Railway might provide for MySQL
+def get_database_url():
+    # Option 1: Direct DATABASE_URL
+    url = os.environ.get("DATABASE_URL", "")
+    if url:
+        print(f"✅ Using DATABASE_URL: {url[:40]}...")
+        if url.startswith("mysql://"):
+            url = url.replace("mysql://", "mysql+pymysql://", 1)
+        elif url.startswith("mysql+mysqlconnector://"):
+            url = url.replace("mysql+mysqlconnector://", "mysql+pymysql://", 1)
+        return url
 
+    # Option 2: MYSQL_URL
+    url = os.environ.get("MYSQL_URL", "")
+    if url:
+        print(f"✅ Using MYSQL_URL: {url[:40]}...")
+        if url.startswith("mysql://"):
+            url = url.replace("mysql://", "mysql+pymysql://", 1)
+        return url
+
+    # Option 3: Individual MySQL variables (Railway sometimes provides these)
+    host     = os.environ.get("MYSQL_HOST", "")
+    port     = os.environ.get("MYSQL_PORT", "3306")
+    user     = os.environ.get("MYSQL_USER", "")
+    password = os.environ.get("MYSQL_PASSWORD", "")
+    database = os.environ.get("MYSQL_DATABASE", "")
+
+    if host and user and database:
+        url = f"mysql+pymysql://{user}:{password}@{host}:{port}/{database}"
+        print(f"✅ Built URL from MYSQL_* vars: {host}:{port}/{database}")
+        return url
+
+    # Fallback: local dev
+    print("⚠ No Railway DB vars found — falling back to localhost MySQL")
+    return "mysql+mysqlconnector://vocuser:1234@localhost:3306/iot_voc"
+
+DATABASE_URL = get_database_url()
+print(f"🗄 Final DB URL type: {DATABASE_URL.split('://')[0]}")
+
+app.config['SQLALCHEMY_DATABASE_URI']  = DATABASE_URL
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
-# ✅ Set ANTHROPIC_API_KEY as environment variable on Railway
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "sk-ant-XXXXXXXXXXXXXXXXXXXXXXXX")
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
 # ------------------ Database Models ------------------
 class Device(db.Model):
@@ -69,6 +104,7 @@ class Prediction(db.Model):
 
 with app.app_context():
     db.create_all()
+    print("✅ Database tables created successfully")
 
 # ------------------ VOC Calculation ------------------
 def calculate_voc(mq7, mq3, mq4, mq135):
@@ -76,7 +112,11 @@ def calculate_voc(mq7, mq3, mq4, mq135):
 
 # ------------------ Claude AI Prediction ------------------
 def predict_with_claude(mq7, mq3, mq4, mq135, voc):
-    prompt = f"""You are a medical AI assistant analyzing human breath VOC sensor data for disease screening.
+    if not ANTHROPIC_API_KEY:
+        print("⚠ No ANTHROPIC_API_KEY — using fallback")
+        return fallback_prediction(mq7, mq3, mq4, mq135)
+
+    prompt = f"""You are a medical AI assistant analyzing human breath VOC sensor data.
 
 Sensor Readings:
 - MQ7  (Carbon Monoxide): {mq7}  (range 0-4095)
@@ -117,13 +157,11 @@ Respond ONLY with this exact JSON, no extra text:
                             headers=headers, json=payload, timeout=15)
         if response.status_code != 200:
             return fallback_prediction(mq7, mq3, mq4, mq135)
-
         raw = response.json()["content"][0]["text"].strip()
         if raw.startswith("```"):
             raw = raw.split("```")[1]
             if raw.startswith("json"): raw = raw[4:]
         return json.loads(raw.strip())
-
     except Exception as e:
         print(f"❌ Claude error: {e}")
         return fallback_prediction(mq7, mq3, mq4, mq135)
@@ -166,46 +204,60 @@ def receive_data():
     device = Device.query.filter_by(device_id=device_id).first()
     if not device or device.device_token != token: return jsonify({"error": "Unauthorized"}), 403
     try:
-        mq7,mq3,mq4,mq135 = int(data.get("MQ7",0)),int(data.get("MQ3",0)),int(data.get("MQ4",0)),int(data.get("MQ135",0))
+        mq7   = int(data.get("MQ7",   0))
+        mq3   = int(data.get("MQ3",   0))
+        mq4   = int(data.get("MQ4",   0))
+        mq135 = int(data.get("MQ135", 0))
     except:
         return jsonify({"error": "Invalid values"}), 400
-    voc = calculate_voc(mq7,mq3,mq4,mq135)
-    db.session.add(SensorData(device_id=device_id,mq7=mq7,mq3=mq3,mq4=mq4,mq135=mq135,voc=voc))
+    voc = calculate_voc(mq7, mq3, mq4, mq135)
+    db.session.add(SensorData(device_id=device_id, mq7=mq7, mq3=mq3,
+                              mq4=mq4, mq135=mq135, voc=voc))
     db.session.commit()
     return jsonify({"status": "success", "voc": voc})
 
 
-@app.route("/latest/<device_id>", methods=["GET","OPTIONS"])
+@app.route("/latest/<device_id>", methods=["GET", "OPTIONS"])
 def latest(device_id):
     if request.method == "OPTIONS": return jsonify({}), 200
-    data = SensorData.query.filter_by(device_id=device_id).order_by(SensorData.timestamp.desc()).first()
+    data = SensorData.query.filter_by(device_id=device_id)\
+        .order_by(SensorData.timestamp.desc()).first()
     if not data: return jsonify({"error": "No data"}), 404
-    return jsonify({"MQ7":data.mq7,"MQ3":data.mq3,"MQ4":data.mq4,"MQ135":data.mq135,"VOC":data.voc,"Timestamp":data.timestamp.strftime("%Y-%m-%d %H:%M:%S")})
+    return jsonify({"MQ7":data.mq7,"MQ3":data.mq3,"MQ4":data.mq4,
+                    "MQ135":data.mq135,"VOC":data.voc,
+                    "Timestamp":data.timestamp.strftime("%Y-%m-%d %H:%M:%S")})
 
 
-@app.route("/predict/<device_id>", methods=["GET","OPTIONS"])
+@app.route("/predict/<device_id>", methods=["GET", "OPTIONS"])
 def predict(device_id):
     if request.method == "OPTIONS": return jsonify({}), 200
-    data = SensorData.query.filter_by(device_id=device_id).order_by(SensorData.timestamp.desc()).first()
+    data = SensorData.query.filter_by(device_id=device_id)\
+        .order_by(SensorData.timestamp.desc()).first()
     if not data: return jsonify({"error": "No data"}), 404
-    result = predict_with_claude(data.mq7,data.mq3,data.mq4,data.mq135,data.voc)
-    db.session.add(Prediction(device_id=device_id,mq7=data.mq7,mq3=data.mq3,mq4=data.mq4,mq135=data.mq135,voc=data.voc,
-        status=result.get("status","UNKNOWN"),disease=result.get("disease","Unknown"),
-        confidence=result.get("confidence","N/A"),advice=result.get("advice","Consult a doctor.")))
+    result = predict_with_claude(data.mq7, data.mq3, data.mq4, data.mq135, data.voc)
+    db.session.add(Prediction(device_id=device_id, mq7=data.mq7, mq3=data.mq3,
+        mq4=data.mq4, mq135=data.mq135, voc=data.voc,
+        status=result.get("status","UNKNOWN"), disease=result.get("disease","Unknown"),
+        confidence=result.get("confidence","N/A"), advice=result.get("advice","Consult a doctor.")))
     db.session.commit()
-    return jsonify({**result, "sensor":{"MQ7":data.mq7,"MQ3":data.mq3,"MQ4":data.mq4,"MQ135":data.mq135,"VOC":data.voc},
-                    "timestamp":data.timestamp.strftime("%Y-%m-%d %H:%M:%S")})
+    return jsonify({**result,
+        "sensor":{"MQ7":data.mq7,"MQ3":data.mq3,"MQ4":data.mq4,"MQ135":data.mq135,"VOC":data.voc},
+        "timestamp":data.timestamp.strftime("%Y-%m-%d %H:%M:%S")})
 
 
 @app.route("/predictions/<device_id>", methods=["GET"])
 def prediction_history(device_id):
-    preds = Prediction.query.filter_by(device_id=device_id).order_by(Prediction.timestamp.desc()).limit(10).all()
-    return jsonify([{"status":p.status,"disease":p.disease,"confidence":p.confidence,"advice":p.advice,"timestamp":p.timestamp.strftime("%Y-%m-%d %H:%M:%S")} for p in preds])
+    preds = Prediction.query.filter_by(device_id=device_id)\
+        .order_by(Prediction.timestamp.desc()).limit(10).all()
+    return jsonify([{"status":p.status,"disease":p.disease,"confidence":p.confidence,
+                     "advice":p.advice,"timestamp":p.timestamp.strftime("%Y-%m-%d %H:%M:%S")}
+                    for p in preds])
 
 
 @app.route("/", methods=["GET"])
 def home():
-    return jsonify({"status":"running","message":"🚀 IoT VOC Backend with Claude AI"})
+    return jsonify({"status":"running","message":"🚀 IoT VOC Backend with Claude AI",
+                    "db": DATABASE_URL.split("@")[-1] if "@" in DATABASE_URL else "connected"})
 
 
 # ------------------ Run ------------------
