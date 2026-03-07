@@ -132,8 +132,8 @@ canvas { width:100%!important; height:100%!important; }
 
 </div>
 <script>
-// ✅ Live Railway backend URL
-const SERVER_URL = "https://web-production-ee1bb.up.railway.app";
+// ✅ Same origin — no need for full URL since Flask serves this page
+const SERVER_URL = "";
 const DEVICE_ID  = "device123";
 const MAX_POINTS = 50;
 const ids = ["mq7","mq3","mq4","mq135","voc"];
@@ -157,7 +157,7 @@ function setStatus(msg, type="ok") {
 
 async function updateDashboard() {
     try {
-        const res = await fetch(SERVER_URL + "/latest/" + DEVICE_ID, {method:"GET", mode:"cors", cache:"no-cache"});
+        const res = await fetch("/latest/" + DEVICE_ID, {cache:"no-cache"});
         if (res.status === 404) { setStatus("⏳ Waiting for ESP32 data...", "warning"); return; }
         if (!res.ok) { setStatus("⚠ Backend error (HTTP " + res.status + ")", "error"); return; }
         const d = await res.json();
@@ -173,9 +173,7 @@ async function updateDashboard() {
         history.mq7.push(mq7); history.mq3.push(mq3); history.mq4.push(mq4); history.mq135.push(mq135); history.voc.push(voc);
         if (history.labels.length > MAX_POINTS) { history.labels.shift(); ids.forEach(id => history[id].shift()); }
         ids.forEach(id => { charts[id].data.labels = history.labels; charts[id].data.datasets[0].data = history[id]; charts[id].update("none"); });
-    } catch(e) {
-        setStatus("❌ Cannot reach backend", "error");
-    }
+    } catch(e) { setStatus("❌ Cannot reach backend", "error"); }
 }
 
 async function runPrediction() {
@@ -184,30 +182,27 @@ async function runPrediction() {
     btn.innerHTML = '<span class="spinner"></span>Analyzing...';
     document.getElementById("pred-advice").textContent = "Claude AI is analyzing your breath data...";
     try {
-        const res = await fetch(SERVER_URL + "/predict/" + DEVICE_ID, {method:"GET", mode:"cors", cache:"no-cache"});
+        const res = await fetch("/predict/" + DEVICE_ID, {cache:"no-cache"});
         if (!res.ok) { document.getElementById("pred-advice").textContent = "⚠ Failed (HTTP " + res.status + ")"; return; }
         const p = await res.json();
         const statusEl = document.getElementById("pred-status");
-        statusEl.textContent = p.status;
-        statusEl.className = "value status-" + p.status;
+        statusEl.textContent = p.status; statusEl.className = "value status-" + p.status;
         document.getElementById("pred-disease").textContent = p.disease || "—";
         const riskEl = document.getElementById("pred-risk");
-        riskEl.textContent = p.risk_level || "—";
-        riskEl.className = "value risk-" + (p.risk_level || "Low");
+        riskEl.textContent = p.risk_level || "—"; riskEl.className = "value risk-" + (p.risk_level || "Low");
         document.getElementById("pred-confidence").textContent = p.confidence || "—";
         document.getElementById("pred-advice").textContent = p.advice || "—";
         loadPredictionHistory();
     } catch(e) {
         document.getElementById("pred-advice").textContent = "❌ Error: " + e.message;
     } finally {
-        btn.disabled = false;
-        btn.innerHTML = "⚡ Run AI Analysis";
+        btn.disabled = false; btn.innerHTML = "⚡ Run AI Analysis";
     }
 }
 
 async function loadPredictionHistory() {
     try {
-        const res = await fetch(SERVER_URL + "/predictions/" + DEVICE_ID, {mode:"cors", cache:"no-cache"});
+        const res = await fetch("/predictions/" + DEVICE_ID, {cache:"no-cache"});
         if (!res.ok) return;
         const preds = await res.json();
         if (!preds.length) return;
