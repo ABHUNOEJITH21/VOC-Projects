@@ -11,35 +11,44 @@ app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 # ---- Database Config ----
-MYSQL_URL = os.environ.get("MYSQL_URL", "")
-DATABASE_URL = os.environ.get("DATABASE_URL", "")
-MYSQL_HOST = os.environ.get("MYSQLHOST", os.environ.get("MYSQL_HOST", "localhost"))
-MYSQL_PORT = os.environ.get("MYSQLPORT", os.environ.get("MYSQL_PORT", "3306"))
-MYSQL_USER = os.environ.get("MYSQLUSER", os.environ.get("MYSQL_USER", "vocuser"))
-MYSQL_PASSWORD = os.environ.get("MYSQLPASSWORD", os.environ.get("MYSQL_PASSWORD", "1234"))
-MYSQL_DATABASE = os.environ.get("MYSQL_DATABASE", os.environ.get("MYSQLDATABASE", "railway"))
+# Railway provides MYSQL_URL — we just need to swap the driver prefix
+RAW_URL = (
+    os.environ.get("MYSQL_URL") or
+    os.environ.get("DATABASE_URL") or
+    ""
+)
 
-print("DEBUG MYSQL_HOST=" + MYSQL_HOST)
-print("DEBUG MYSQL_USER=" + MYSQL_USER)
-print("DEBUG MYSQL_DATABASE=" + MYSQL_DATABASE)
-print("DEBUG DATABASE_URL=" + DATABASE_URL)
-print("DEBUG MYSQL_URL=" + MYSQL_URL)
-
-if DATABASE_URL:
-    DB_URI = DATABASE_URL.replace("mysql://", "mysql+pymysql://").replace("mysql+mysqlconnector://", "mysql+pymysql://")
-elif MYSQL_URL:
-    DB_URI = MYSQL_URL.replace("mysql://", "mysql+pymysql://")
+if RAW_URL:
+    # Replace any mysql:// or mysql+mysqlconnector:// with mysql+pymysql://
+    DB_URI = RAW_URL
+    DB_URI = DB_URI.replace("mysql+mysqlconnector://", "mysql+pymysql://")
+    if DB_URI.startswith("mysql://"):
+        DB_URI = "mysql+pymysql://" + DB_URI[len("mysql://"):]
+    print("DEBUG using URL-based connection")
+    print("DEBUG DB_URI prefix=" + DB_URI[:30])
 else:
-    DB_URI = "mysql+pymysql://" + MYSQL_USER + ":" + MYSQL_PASSWORD + "@" + MYSQL_HOST + ":" + MYSQL_PORT + "/" + MYSQL_DATABASE
+    # Fallback: build from individual vars
+    H = os.environ.get("MYSQLHOST", "localhost")
+    P = os.environ.get("MYSQLPORT", "3306")
+    U = os.environ.get("MYSQLUSER", "vocuser")
+    W = os.environ.get("MYSQLPASSWORD", "1234")
+    D = os.environ.get("MYSQL_DATABASE", "railway")
+    DB_URI = "mysql+pymysql://" + U + ":" + W + "@" + H + ":" + P + "/" + D
+    print("DEBUG using individual vars H=" + H + " D=" + D)
 
-print("DEBUG DB_URI=" + DB_URI)
+print("DEBUG final DB_URI start=" + DB_URI[:40])
 
 app.config["SQLALCHEMY_DATABASE_URI"] = DB_URI
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+    "pool_pre_ping": True,
+    "pool_recycle": 300,
+}
 
 db = SQLAlchemy(app)
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+print("DEBUG ANTHROPIC_KEY set=" + str(bool(ANTHROPIC_API_KEY)))
 
 # ---- Models ----
 class Device(db.Model):
