@@ -99,3 +99,128 @@ canvas { width:100%!important; height:100%!important; }
 
   <div class="ai-panel">
     <div class="ai-panel-header">
+      <div class="ai-panel-title"><div class="dot"></div>🤖 Claude AI Disease Prediction</div>
+      <button id="predictBtn" onclick="runPrediction()">⚡ Run AI Analysis</button>
+    </div>
+    <div class="prediction-grid">
+      <div class="pred-card"><div class="label">Status</div><div class="value" id="pred-status">—</div></div>
+      <div class="pred-card"><div class="label">Disease / Condition</div><div class="value" style="font-size:1.1rem;" id="pred-disease">—</div></div>
+      <div class="pred-card"><div class="label">Risk Level</div><div class="value" id="pred-risk">—</div></div>
+      <div class="pred-card"><div class="label">Confidence</div><div class="value" id="pred-confidence">—</div></div>
+    </div>
+    <div class="advice-box">
+      <strong>💡 Advice: </strong>
+      <span id="pred-advice">Click "Run AI Analysis" to get a health assessment from Claude AI.</span>
+    </div>
+  </div>
+
+  <div class="history-section">
+    <div class="section-title">📋 Recent Predictions</div>
+    <table class="history-table">
+      <thead><tr><th>Time</th><th>Status</th><th>Disease</th><th>Confidence</th><th>Advice</th></tr></thead>
+      <tbody id="historyBody"><tr><td colspan="5" style="color:#555;text-align:center;padding:20px;">No predictions yet</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="charts-grid">
+    <div class="chart-container"><div class="chart-title">MQ7 — Carbon Monoxide</div><canvas id="mq7Chart"></canvas></div>
+    <div class="chart-container"><div class="chart-title">MQ3 — Alcohol</div><canvas id="mq3Chart"></canvas></div>
+    <div class="chart-container"><div class="chart-title">MQ4 — Methane</div><canvas id="mq4Chart"></canvas></div>
+    <div class="chart-container"><div class="chart-title">MQ135 — VOC</div><canvas id="mq135Chart"></canvas></div>
+    <div class="chart-container"><div class="chart-title">VOC Score</div><canvas id="vocChart"></canvas></div>
+  </div>
+
+</div>
+<script>
+// ✅ Live Railway backend URL
+const SERVER_URL = "https://web-production-ee1bb.up.railway.app";
+const DEVICE_ID  = "device123";
+const MAX_POINTS = 50;
+const ids = ["mq7","mq3","mq4","mq135","voc"];
+const charts = {};
+const history = {mq7:[],mq3:[],mq4:[],mq135:[],voc:[],labels:[]};
+
+function makeChart(id) {
+    const ctx = document.getElementById(id+"Chart").getContext("2d");
+    return new Chart(ctx,{type:"line",data:{labels:[],datasets:[{data:[],borderColor:"#00d4ff",backgroundColor:"rgba(0,212,255,0.12)",borderWidth:2.5,fill:true,tension:0.4,pointRadius:2}]},
+    options:{responsive:true,maintainAspectRatio:false,animation:false,
+    scales:{x:{ticks:{color:"#555",maxTicksLimit:6},grid:{color:"rgba(0,212,255,0.07)"}},y:{beginAtZero:true,ticks:{color:"#555"},grid:{color:"rgba(0,212,255,0.07)"}}},
+    plugins:{legend:{display:false}}}});
+}
+ids.forEach(id => charts[id] = makeChart(id));
+
+function setStatus(msg, type="ok") {
+    const el = document.getElementById("status");
+    el.textContent = msg;
+    el.className = "status-bar" + (type==="error" ? " error" : type==="warning" ? " warning" : "");
+}
+
+async function updateDashboard() {
+    try {
+        const res = await fetch(SERVER_URL + "/latest/" + DEVICE_ID, {method:"GET", mode:"cors", cache:"no-cache"});
+        if (res.status === 404) { setStatus("⏳ Waiting for ESP32 data...", "warning"); return; }
+        if (!res.ok) { setStatus("⚠ Backend error (HTTP " + res.status + ")", "error"); return; }
+        const d = await res.json();
+        const mq7=Number(d.MQ7??0), mq3=Number(d.MQ3??0), mq4=Number(d.MQ4??0), mq135=Number(d.MQ135??0), voc=Number(d.VOC??0);
+        document.getElementById("mq7").textContent   = mq7;
+        document.getElementById("mq3").textContent   = mq3;
+        document.getElementById("mq4").textContent   = mq4;
+        document.getElementById("mq135").textContent = mq135;
+        document.getElementById("voc").textContent   = voc.toFixed(2);
+        setStatus("✅ LIVE  " + new Date().toLocaleTimeString());
+        const label = new Date().toLocaleTimeString();
+        history.labels.push(label);
+        history.mq7.push(mq7); history.mq3.push(mq3); history.mq4.push(mq4); history.mq135.push(mq135); history.voc.push(voc);
+        if (history.labels.length > MAX_POINTS) { history.labels.shift(); ids.forEach(id => history[id].shift()); }
+        ids.forEach(id => { charts[id].data.labels = history.labels; charts[id].data.datasets[0].data = history[id]; charts[id].update("none"); });
+    } catch(e) {
+        setStatus("❌ Cannot reach backend", "error");
+    }
+}
+
+async function runPrediction() {
+    const btn = document.getElementById("predictBtn");
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>Analyzing...';
+    document.getElementById("pred-advice").textContent = "Claude AI is analyzing your breath data...";
+    try {
+        const res = await fetch(SERVER_URL + "/predict/" + DEVICE_ID, {method:"GET", mode:"cors", cache:"no-cache"});
+        if (!res.ok) { document.getElementById("pred-advice").textContent = "⚠ Failed (HTTP " + res.status + ")"; return; }
+        const p = await res.json();
+        const statusEl = document.getElementById("pred-status");
+        statusEl.textContent = p.status;
+        statusEl.className = "value status-" + p.status;
+        document.getElementById("pred-disease").textContent = p.disease || "—";
+        const riskEl = document.getElementById("pred-risk");
+        riskEl.textContent = p.risk_level || "—";
+        riskEl.className = "value risk-" + (p.risk_level || "Low");
+        document.getElementById("pred-confidence").textContent = p.confidence || "—";
+        document.getElementById("pred-advice").textContent = p.advice || "—";
+        loadPredictionHistory();
+    } catch(e) {
+        document.getElementById("pred-advice").textContent = "❌ Error: " + e.message;
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = "⚡ Run AI Analysis";
+    }
+}
+
+async function loadPredictionHistory() {
+    try {
+        const res = await fetch(SERVER_URL + "/predictions/" + DEVICE_ID, {mode:"cors", cache:"no-cache"});
+        if (!res.ok) return;
+        const preds = await res.json();
+        if (!preds.length) return;
+        document.getElementById("historyBody").innerHTML = preds.map(p =>
+            "<tr><td>" + p.timestamp + "</td><td class='status-" + p.status + "'>" + p.status + "</td><td>" + p.disease + "</td><td>" + p.confidence + "</td><td style='font-size:0.82rem;'>" + p.advice + "</td></tr>"
+        ).join("");
+    } catch(e) {}
+}
+
+updateDashboard();
+loadPredictionHistory();
+setInterval(updateDashboard, 2000);
+setInterval(loadPredictionHistory, 30000);
+</script>
+</body>
+</html>
