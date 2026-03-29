@@ -247,7 +247,7 @@ canvas { width:100%!important; height:100%!important; }
 <script>
 // ✅ After deploying to Railway, replace this with your Railway public URL
 // Example: const SERVER_URL = "https://voc-project.up.railway.app";
-const SERVER_URL = "https://YOUR-APP-NAME.up.railway.app";
+const SERVER_URL = "";
 const DEVICE_ID  = "device123";
 const MAX_POINTS = 50;
 const ids = ["mq7","mq3","mq4","mq135","voc"];
