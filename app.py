@@ -352,19 +352,19 @@ canvas{width:100%!important;height:100%!important}
 </head>
 <body>
 <div class="container">
-  <h1>&#129753; VOC Disease Detection</h1>
+  <h1>🫁 VOC Disease Detection</h1>
   <p class="subtitle">ESP32 &middot; Real-Time Breath Analysis &middot; Claude AI</p>
   <div class="status-bar" id="status">&#128260; Connecting...</div>
   <div class="sensor-grid">
     <div class="sensor-card"><div class="sensor-label">MQ7 &mdash; CO</div><div class="sensor-value" id="mq7">&mdash;</div></div>
     <div class="sensor-card"><div class="sensor-label">MQ3 &mdash; Alcohol</div><div class="sensor-value" id="mq3">&mdash;</div></div>
     <div class="sensor-card"><div class="sensor-label">MQ4 &mdash; Methane</div><div class="sensor-value" id="mq4">&mdash;</div></div>
-    <div class="sensor-card"><div class="sensor-label">MQ135 &mdash; VOC</div><div class="sensor-value" id="mq135">&mdash;</div></div>
+    <div class="sensor-card"><div class="sensor-label">MQ135 &mdash; NH3</div><div class="sensor-value" id="mq135">&mdash;</div></div>
     <div class="sensor-card"><div class="sensor-label">VOC Score</div><div class="sensor-value" id="voc">&mdash;</div></div>
   </div>
   <div class="ai-panel">
     <div class="ai-panel-header">
-      <div class="ai-panel-title"><div class="dot"></div>&#129504; Claude AI Disease Prediction</div>
+      <div class="ai-panel-title"><div class="dot"></div>&#129504; AI Disease Prediction</div>
       <button id="predictBtn" onclick="runPrediction()">&#9889; Run AI Analysis</button>
     </div>
     <div class="prediction-grid">
@@ -394,7 +394,7 @@ canvas{width:100%!important;height:100%!important}
     <div class="chart-container"><div class="chart-title">MQ7 &mdash; Carbon Monoxide</div><canvas id="mq7Chart"></canvas></div>
     <div class="chart-container"><div class="chart-title">MQ3 &mdash; Alcohol/Acetone</div><canvas id="mq3Chart"></canvas></div>
     <div class="chart-container"><div class="chart-title">MQ4 &mdash; Methane</div><canvas id="mq4Chart"></canvas></div>
-    <div class="chart-container"><div class="chart-title">MQ135 &mdash; VOC/Ammonia</div><canvas id="mq135Chart"></canvas></div>
+    <div class="chart-container"><div class="chart-title">MQ135 &mdash; NH3/Ammonia</div><canvas id="mq135Chart"></canvas></div>
     <div class="chart-container"><div class="chart-title">VOC Score</div><canvas id="vocChart"></canvas></div>
   </div>
 </div>
