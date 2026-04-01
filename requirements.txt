@@ -6,3 +6,5 @@ requests
 gunicorn
 pymysql
 cryptography
+pymysql
+anthropic
